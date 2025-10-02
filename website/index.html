@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-File Downloader</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.6/StreamSaver.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -241,61 +242,16 @@
             hideError();
 
             try {
-                const zip = new JSZip();
-                
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const fileName = selectedFiles[i];
-                    const progress = ((i / selectedFiles.length) * 100).toFixed(0);
-                    
-                    updateProgress(progress, `Lade Datei ${i + 1} von ${selectedFiles.length}: ${fileName}`);
-                    
-                    try {
-                        const fileUrl = API_BASE_URL + fileName;
-                        const response = await fetch(fileUrl);
-                        
-                        if (!response.ok) {
-                            throw new Error(`Fehler beim Laden von ${fileName}: HTTP ${response.status}`);
-                        }
-                        
-                        const blob = await response.blob();
-                        const prefixedName = 'batchload_' + fileName;
-                        
-                        zip.file(prefixedName, blob);
-                    } catch (error) {
-                        console.error(`Fehler bei Datei ${fileName}:`, error);
-                        showError(`Fehler bei Datei ${fileName}: ${error.message}`);
-                        // Weitermachen mit den anderen Dateien
-                    }
-                }
-
-                updateProgress(100, 'Erstelle ZIP-Archiv...');
-                
-                // ZIP-Datei generieren
-                const zipBlob = await zip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: { level: 6 }
-                });
-
                 // Aktuelles Datum und Uhrzeit für Dateinamen
                 const now = new Date();
                 const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-').replace(/-/g, '');
                 const zipFileName = `${timestamp}-batchload.zip`;
 
-                // Download starten
-                const url = URL.createObjectURL(zipBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = zipFileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                // Sofortigen Download-Stream starten
+                await streamZipDownload(selectedFiles, zipFileName);
 
-                updateProgress(100, `ZIP-Datei ${zipFileName} erfolgreich erstellt!`);
-                
             } catch (error) {
-                showError('Fehler beim Erstellen der ZIP-Datei: ' + error.message);
+                showError('Fehler beim Download: ' + error.message);
                 console.error('Download error:', error);
             } finally {
                 isDownloading = false;
@@ -304,6 +260,277 @@
                     document.getElementById('progress').style.display = 'none';
                 }, 3000);
             }
+        }
+
+        async function streamZipDownload(selectedFiles, zipFileName) {
+            // Prüfen, ob File System Access API verfügbar ist (Chrome/Edge native)
+            const supportsFileSystemAccess = 'showSaveFilePicker' in window;
+            
+            // StreamSaver als primäre Methode für alle Browser
+            if (typeof streamSaver !== 'undefined') {
+                await streamZipWithStreamSaver(selectedFiles, zipFileName);
+            } else if (supportsFileSystemAccess) {
+                await streamZipWithFileSystemAPI(selectedFiles, zipFileName);
+            } else {
+                await streamZipFallback(selectedFiles, zipFileName);
+            }
+        }
+
+        async function streamZipWithStreamSaver(selectedFiles, zipFileName) {
+            // StreamSaver - funktioniert in allen modernen Browsern!
+            const fileStream = streamSaver.createWriteStream(zipFileName, {
+                size: undefined // Unbekannte Größe
+            });
+
+            const writer = fileStream.getWriter();
+            let totalSize = 0;
+
+            // ZIP-Writer mit fflate für Streaming
+            const zipWriter = new fflate.Zip();
+
+            // Event-Handler für ZIP-Daten - schreibt direkt in den Stream!
+            zipWriter.ondata = async (err, data, final) => {
+                if (err) {
+                    console.error('ZIP Error:', err);
+                    await writer.abort();
+                    return;
+                }
+                
+                try {
+                    // Chunk direkt in Stream schreiben
+                    await writer.write(data);
+                    totalSize += data.length;
+                    
+                    if (final) {
+                        await writer.close();
+                        updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
+                    }
+                } catch (writeError) {
+                    console.error('Write error:', writeError);
+                    showError('Fehler beim Schreiben: ' + writeError.message);
+                }
+            };
+
+            // Dateien sequenziell laden und streamen
+            try {
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const fileName = selectedFiles[i];
+                    
+                    try {
+                        await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
+                    } catch (error) {
+                        console.error(`Fehler bei Datei ${fileName}:`, error);
+                        showError(`Fehler bei Datei ${fileName}: ${error.message}`);
+                    }
+                }
+
+                updateProgress(95, 'Finalisiere ZIP-Archiv...');
+                zipWriter.end();
+            } catch (error) {
+                await writer.abort();
+                throw error;
+            }
+        }
+
+        async function streamZipWithFileSystemAPI(selectedFiles, zipFileName) {
+            try {
+                // Datei-Dialog sofort anzeigen - User Experience!
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: zipFileName,
+                    types: [{
+                        description: 'ZIP Archive',
+                        accept: { 'application/zip': ['.zip'] }
+                    }]
+                });
+
+                const writable = await fileHandle.createWritable();
+                let totalSize = 0;
+
+                // ZIP-Writer mit fflate für Streaming
+                const zipWriter = new fflate.Zip();
+
+                // Event-Handler für ZIP-Daten - schreibt direkt in die Datei!
+                zipWriter.ondata = async (err, data, final) => {
+                    if (err) {
+                        console.error('ZIP Error:', err);
+                        await writable.abort();
+                        return;
+                    }
+                    
+                    // Chunk direkt in Datei schreiben
+                    await writable.write(data);
+                    totalSize += data.length;
+                    
+                    if (final) {
+                        await writable.close();
+                        updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
+                    }
+                };
+
+                // Dateien sequenziell laden und streamen
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const fileName = selectedFiles[i];
+                    
+                    try {
+                        await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
+                    } catch (error) {
+                        console.error(`Fehler bei Datei ${fileName}:`, error);
+                        showError(`Fehler bei Datei ${fileName}: ${error.message}`);
+                    }
+                }
+
+                updateProgress(95, 'Finalisiere ZIP-Archiv...');
+                zipWriter.end();
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    updateProgress(0, 'Download abgebrochen');
+                } else {
+                    throw error;
+                }
+            }
+        }
+
+        async function streamZipFallback(selectedFiles, zipFileName) {
+            // Fallback für ältere Browser
+            const zipWriter = new fflate.Zip();
+            const chunks = [];
+            let totalSize = 0;
+
+            zipWriter.ondata = (err, data, final) => {
+                if (err) {
+                    console.error('ZIP Error:', err);
+                    return;
+                }
+                
+                chunks.push(data);
+                totalSize += data.length;
+                
+                if (final) {
+                    const blob = new Blob(chunks, { type: 'application/zip' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = zipFileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
+                }
+            };
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const fileName = selectedFiles[i];
+                
+                try {
+                    await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
+                } catch (error) {
+                    console.error(`Fehler bei Datei ${fileName}:`, error);
+                    showError(`Fehler bei Datei ${fileName}: ${error.message}`);
+                }
+            }
+
+            updateProgress(95, 'Finalisiere ZIP-Archiv...');
+            zipWriter.end();
+        }
+
+        async function streamFileToZip(zipWriter, fileName, fileIndex, totalFiles) {
+            const fileUrl = API_BASE_URL + fileName;
+            const prefixedName = 'batchload_' + fileName;
+            
+            const response = await fetch(fileUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            // Dateigröße aus Header auslesen
+            const contentLength = response.headers.get('content-length');
+            const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+            let loadedBytes = 0;
+
+            // File-Writer für diese Datei im ZIP erstellen
+            const fileWriter = new fflate.ZipDeflate(prefixedName, { level: 6 });
+            
+            // File-Writer dem ZIP-Writer hinzufügen
+            zipWriter.add(fileWriter);
+
+            // ReadableStream aus der Response holen
+            const reader = response.body.getReader();
+
+            try {
+                // Stream chunk-weise lesen und direkt an ZIP weiterleiten
+                while (true) {
+                    let result;
+                    try {
+                        result = await reader.read();
+                    } catch (readError) {
+                        console.error('Stream read error:', readError);
+                        throw new Error(`Fehler beim Lesen des Streams: ${readError.message}`);
+                    }
+                    
+                    const { done, value } = result;
+                    
+                    if (done) {
+                        // Datei ist komplett gelesen, File-Writer beenden
+                        fileWriter.push(new Uint8Array(0), true); // Finales leeres Chunk
+                        break;
+                    }
+                    
+                    if (!value || value.length === 0) {
+                        continue; // Leere Chunks überspringen
+                    }
+                    
+                    // Chunk an File-Writer weiterleiten
+                    try {
+                        fileWriter.push(value, false);
+                    } catch (pushError) {
+                        console.error('ZIP push error:', pushError);
+                        throw new Error(`Fehler beim Komprimieren: ${pushError.message}`);
+                    }
+                    
+                    // Fortschritt aktualisieren
+                    loadedBytes += value.length;
+                    if (totalBytes > 0) {
+                        const fileProgress = (loadedBytes / totalBytes) * 100;
+                        const overallProgress = ((fileIndex + fileProgress / 100) / totalFiles) * 90;
+                        updateProgress(
+                            overallProgress.toFixed(1), 
+                            `Datei ${fileIndex + 1}/${totalFiles}: ${fileName} (${formatFileSize(loadedBytes)}/${formatFileSize(totalBytes)} - ${fileProgress.toFixed(0)}%)`
+                        );
+                    }
+                    
+                    // Kleine Pause für Firefox, um den Event Loop nicht zu blockieren
+                    if (loadedBytes % (1024 * 1024 * 10) < value.length) { // Alle ~10MB
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                }
+            } catch (error) {
+                // Stream explizit abbrechen bei Fehler
+                try {
+                    await reader.cancel();
+                } catch (e) {
+                    console.error('Error canceling reader:', e);
+                }
+                throw error;
+            } finally {
+                try {
+                    reader.releaseLock();
+                } catch (e) {
+                    // Lock könnte bereits freigegeben sein
+                    console.debug('Reader lock already released');
+                }
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
         function updateProgress(percent, text) {
