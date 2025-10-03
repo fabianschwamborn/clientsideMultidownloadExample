@@ -567,26 +567,39 @@ async function downloadSingleFile(fileName) {
             await downloadSingleFileViaBlob(fileName, newFileName);
             return;
         }
-        
-        // Try File System Access API first if available and wanted
+
+        let lastError = null;
+
+        // Try File System Access API first if available and user wants it
         if (useFileSystemAPI && supportsFileSystemAccess && !isMobile) {
-            console.info('Using File System Access API for single file');
-            showMethodInfo('✓ Single file via File System API', 'success');
-            await downloadSingleFileViaFileSystemAPI(fileName, newFileName);
-            return;
+            try {
+                console.info('Using File System Access API for single file');
+                showMethodInfo('✓ Single file via File System API', 'success');
+                await downloadSingleFileViaFileSystemAPI(fileName, newFileName);
+                return;
+            } catch (error) {
+                lastError = error;
+                console.warn('File System Access API failed, will try StreamSaver next:', error.message);
+            }
         }
-        
+
         // Try StreamSaver for direct download
         if (typeof streamSaver !== 'undefined') {
-            console.info('Using StreamSaver for single file');
-            showMethodInfo('✓ Single file via StreamSaver', 'success');
-            await downloadSingleFileViaStreamSaver(fileName, newFileName);
-            return;
+            try {
+                console.info('Using StreamSaver for single file');
+                showMethodInfo('✓ Single file via StreamSaver', 'success');
+                await downloadSingleFileViaStreamSaver(fileName, newFileName);
+                return;
+            } catch (error) {
+                lastError = error;
+                console.warn('StreamSaver failed for single file, falling back:', error.message);
+            }
         }
-        
+
         // Fallback to blob
         console.warn('Using blob fallback for single file');
-        showMethodInfo('⚠ Single file via Blob (fallback)', 'warning');
+        const fallbackMessage = lastError ? `⚠ Single file via Blob (fallback). Reason: ${lastError.message}` : '⚠ Single file via Blob (fallback)';
+        showMethodInfo(fallbackMessage, 'warning');
         showBlobWarning();
         await downloadSingleFileViaBlob(fileName, newFileName);
         
@@ -650,40 +663,125 @@ async function downloadSingleFileViaFileSystemAPI(fileName, newFileName) {
 // Download single file using StreamSaver
 async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
     console.info('Creating StreamSaver stream for single file...');
-    
-    const fileStream = streamSaver.createWriteStream(newFileName);
-    const writer = fileStream.getWriter();
-    
+
     const response = await fetch(API_BASE_URL + fileName);
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
-    const reader = response.body.getReader();
-    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+
+    if (!response.body) {
+        throw new Error('ReadableStream not available on fetch response');
+    }
+
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+
+    const contentLengthHeader = response.headers.get('content-length');
+    const contentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+    const streamOptions = contentLength > 0 ? { size: contentLength } : undefined;
+    const writableStream = streamSaver.createWriteStream(newFileName, streamOptions);
+
     let receivedLength = 0;
-    
-    while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
-        
-        await writer.write(value);
-        receivedLength += value.length;
-        
+    let firstChunkReceived = false;
+
+    const stallAbortController = new AbortController();
+    const stallTimeout = setTimeout(() => {
+        if (!firstChunkReceived) {
+            console.warn('StreamSaver handshake stalled after 5s - aborting to trigger fallback');
+            stallAbortController.abort();
+        }
+    }, 5000);
+
+    const updateProgress = (loaded) => {
         if (contentLength > 0) {
-            const progress = Math.round((receivedLength / contentLength) * 100);
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
+            const progress = Math.min(100, Math.round((loaded / contentLength) * 100));
             if (progressFill) progressFill.style.width = progress + '%';
             if (progressText) progressText.textContent = `Progress: ${progress}%`;
+        } else {
+            if (progressFill) {
+                const width = Math.min(95, Math.max(10, Math.round((loaded / (1024 * 1024)) * 10)));
+                progressFill.style.width = width + '%';
+            }
+            if (progressText) progressText.textContent = `Downloaded ${formatFileSize(loaded)}`;
+        }
+    };
+
+    if (typeof TransformStream !== 'undefined' && response.body.pipeThrough) {
+        const progressStream = new TransformStream({
+            transform(chunk, controller) {
+                if (chunk) {
+                    receivedLength += chunk.length;
+                    if (!firstChunkReceived) {
+                        firstChunkReceived = true;
+                        clearTimeout(stallTimeout);
+                        console.info('StreamSaver handshake established - streaming data');
+                    }
+                    updateProgress(receivedLength);
+                }
+                controller.enqueue(chunk);
+            }
+        });
+
+        try {
+            await response.body
+                .pipeThrough(progressStream)
+                .pipeTo(writableStream, { signal: stallAbortController.signal });
+        } catch (error) {
+            clearTimeout(stallTimeout);
+            if (stallAbortController.signal.aborted) {
+                throw new Error('StreamSaver handshake timeout (no data received)');
+            }
+            throw error;
+        }
+    } else {
+        console.info('TransformStream not available - using manual StreamSaver writer');
+        const reader = response.body.getReader();
+        const writer = writableStream.getWriter();
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (!value || value.length === 0) {
+                    continue;
+                }
+                if (!firstChunkReceived) {
+                    const writePromise = writer.write(value);
+                    await Promise.race([
+                        writePromise.then(() => {
+                            firstChunkReceived = true;
+                            clearTimeout(stallTimeout);
+                            console.info('StreamSaver handshake established - streaming data');
+                        }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('StreamSaver handshake timeout (no data received)')), 5000))
+                    ]);
+                } else {
+                    await writer.write(value);
+                }
+                receivedLength += value.length;
+                updateProgress(receivedLength);
+            }
+            await writer.close();
+        } catch (error) {
+            throw error;
+        } finally {
+            try {
+                reader.releaseLock();
+            } catch (e) {
+                console.debug('Reader lock already released');
+            }
         }
     }
-    
-    await writer.close();
+
+    clearTimeout(stallTimeout);
+
+    if (contentLength > 0) {
+        updateProgress(contentLength);
+    } else {
+        if (progressFill) progressFill.style.width = '100%';
+        if (progressText) progressText.textContent = 'Download complete!';
+    }
+
     console.info('✓ Single file download complete (StreamSaver)');
-    const progressText = document.getElementById('progressText');
-    const progressFill = document.getElementById('progressFill');
     if (progressText) progressText.textContent = 'Download complete!';
     if (progressFill) progressFill.style.width = '100%';
 }
