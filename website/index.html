@@ -3,550 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-File Downloader</title>
+    <title>Client-Side Multi-Download Technology Demonstrator</title>
+    <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.6/StreamSaver.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .loading {
-            text-align: center;
-            color: #666;
-            font-style: italic;
-        }
-        
-        .file-list {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            max-height: 400px;
-            overflow-y: auto;
-            margin: 20px 0;
-            background-color: #fafafa;
-        }
-        
-        .file-item {
-            padding: 10px 15px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            align-items: center;
-        }
-        
-        .file-item:last-child {
-            border-bottom: none;
-        }
-        
-        .file-item:hover {
-            background-color: #f0f0f0;
-        }
-        
-        .file-checkbox {
-            margin-right: 10px;
-        }
-        
-        .file-name {
-            font-family: monospace;
-            color: #333;
-        }
-        
-        .controls {
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        .btn {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 0 10px;
-            transition: background-color 0.3s;
-        }
-        
-        .btn:hover {
-            background-color: #0056b3;
-        }
-        
-        .btn:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        
-        .btn-secondary {
-            background-color: #6c757d;
-        }
-        
-        .btn-secondary:hover {
-            background-color: #545b62;
-        }
-        
-        .progress {
-            margin: 20px 0;
-            display: none;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background-color: #e9ecef;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background-color: #28a745;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-        
-        .progress-text {
-            text-align: center;
-            margin-top: 10px;
-            color: #666;
-        }
-        
-        .error {
-            color: #dc3545;
-            text-align: center;
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-        }
-    </style>
 </head>
 <body>
     <div class="container">
-        <h1>Multi-File Downloader</h1>
-        <div id="loading" class="loading">Lade Dateiliste...</div>
+        <h1>Client-Side Multi-Download Technology Demonstrator</h1>
+        
+        <div class="info-box">
+            <h2>🔬 Technology Demonstration</h2>
+            <p>This project demonstrates advanced client-side browser capabilities:</p>
+            <ul>
+                <li><strong>Stream Processing:</strong> Memory-efficient handling of large files using ReadableStream API</li>
+                <li><strong>On-the-fly ZIP Compression:</strong> Real-time file packing with fflate library</li>
+                <li><strong>File Renaming:</strong> Automatic "singlefile_" prefix for single files, "batchload_" prefix for multiple files in ZIP</li>
+                <li><strong>Download Streaming:</strong> Direct-to-disk writing via StreamSaver.js or File System Access API</li>
+                <li><strong>Single File Optimization:</strong> Bypasses ZIP creation for single file downloads (direct streaming)</li>
+                <li><strong>Intelligent Fallback:</strong> Automatic method selection: File System API → StreamSaver → Blob</li>
+                <li><strong>User Control:</strong> Manual download method selection and force fallback option</li>
+                <li><strong>Page Protection:</strong> Prevents accidental closure during active downloads</li>
+            </ul>
+            <div class="not-implemented">
+                <strong>⚠️ Not Yet Implemented:</strong> Page-independent service worker for background downloads (would allow page navigation during download)
+            </div>
+        </div>
+        
+        <div id="loading" class="loading">Loading file list...</div>
         <div id="fileListContainer" style="display: none;">
             <div class="controls">
-                <button class="btn btn-secondary" onclick="selectAll()">Alle auswählen</button>
-                <button class="btn btn-secondary" onclick="selectNone()">Alle abwählen</button>
+                <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
+                <button class="btn btn-secondary" onclick="selectNone()">Deselect All</button>
             </div>
             <div id="fileList" class="file-list"></div>
+            
+            <div class="download-options">
+                <h3>Download Options</h3>
+                <label class="option-label">
+                    <input type="checkbox" id="useFileSystemAPI" checked>
+                    <span>Use File System Access API (Ask where to save)</span>
+                </label>
+                <p class="option-description">
+                    When enabled and available, shows a dialog to choose where to save the file.
+                    When disabled or unavailable, starts streaming download directly.
+                </p>
+                
+                <label class="option-label">
+                    <input type="checkbox" id="forceBlobFallback">
+                    <span>Force Blob Fallback (Debug/Testing)</span>
+                </label>
+                <p class="option-description">
+                    Forces the use of blob method instead of streaming APIs. Only use for testing or compatibility issues.
+                    ⚠️ Warning: Uses more memory and may fail with very large files!
+                </p>
+                
+                <div id="downloadMethodInfo" class="method-info"></div>
+            </div>
+            
             <div class="controls">
-                <button id="downloadBtn" class="btn" onclick="downloadSelected()">Ausgewählte Dateien herunterladen</button>
+                <button id="downloadBtn" class="btn" onclick="downloadSelected()">Download Selected Files</button>
             </div>
         </div>
         <div id="progress" class="progress">
             <div class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
             </div>
-            <div id="progressText" class="progress-text">Bereite Download vor...</div>
+            <div id="progressText" class="progress-text">Preparing download...</div>
+            <div id="blobWarning" class="blob-warning" style="display: none;">
+                ⚠️ WARNING: Using Blob method - High memory usage! Large files may cause browser to freeze or crash.
+            </div>
         </div>
         <div id="error" class="error" style="display: none;"></div>
+        
+        <div class="debug-console">
+            <div class="debug-header">
+                <span>🐛 Debug Console (Mobile-Friendly)</span>
+                <button class="debug-clear" onclick="clearDebugConsole()">Clear</button>
+            </div>
+            <div id="debugOutput"></div>
+        </div>
     </div>
 
-    <script>
-        const API_BASE_URL = 'https://testfiles.xxip.de/';
-        const INDEX_URL = API_BASE_URL + 'index.txt';
-        
-        let fileList = [];
-        let isDownloading = false;
-
-        // Beim Laden der Seite die Dateiliste abrufen
-        document.addEventListener('DOMContentLoaded', function() {
-            loadFileList();
-        });
-
-        async function loadFileList() {
-            try {
-                const response = await fetch(INDEX_URL);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const text = await response.text();
-                fileList = text.split('\n').filter(line => line.trim() !== '');
-                
-                displayFileList();
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('fileListContainer').style.display = 'block';
-            } catch (error) {
-                showError('Fehler beim Laden der Dateiliste: ' + error.message);
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
-
-        function displayFileList() {
-            const container = document.getElementById('fileList');
-            container.innerHTML = '';
-            
-            fileList.forEach((fileName, index) => {
-                const fileItem = document.createElement('div');
-                fileItem.className = 'file-item';
-                
-                fileItem.innerHTML = `
-                    <input type="checkbox" class="file-checkbox" id="file_${index}" data-filename="${fileName}">
-                    <label for="file_${index}" class="file-name">${fileName}</label>
-                `;
-                
-                container.appendChild(fileItem);
-            });
-        }
-
-        function selectAll() {
-            const checkboxes = document.querySelectorAll('.file-checkbox');
-            checkboxes.forEach(cb => cb.checked = true);
-        }
-
-        function selectNone() {
-            const checkboxes = document.querySelectorAll('.file-checkbox');
-            checkboxes.forEach(cb => cb.checked = false);
-        }
-
-        function getSelectedFiles() {
-            const checkboxes = document.querySelectorAll('.file-checkbox:checked');
-            return Array.from(checkboxes).map(cb => cb.dataset.filename);
-        }
-
-        async function downloadSelected() {
-            const selectedFiles = getSelectedFiles();
-            
-            if (selectedFiles.length === 0) {
-                alert('Bitte wählen Sie mindestens eine Datei aus.');
-                return;
-            }
-
-            if (isDownloading) {
-                return;
-            }
-
-            isDownloading = true;
-            document.getElementById('downloadBtn').disabled = true;
-            document.getElementById('progress').style.display = 'block';
-            hideError();
-
-            try {
-                // Aktuelles Datum und Uhrzeit für Dateinamen
-                const now = new Date();
-                const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-').replace(/-/g, '');
-                const zipFileName = `${timestamp}-batchload.zip`;
-
-                // Sofortigen Download-Stream starten
-                await streamZipDownload(selectedFiles, zipFileName);
-
-            } catch (error) {
-                showError('Fehler beim Download: ' + error.message);
-                console.error('Download error:', error);
-            } finally {
-                isDownloading = false;
-                document.getElementById('downloadBtn').disabled = false;
-                setTimeout(() => {
-                    document.getElementById('progress').style.display = 'none';
-                }, 3000);
-            }
-        }
-
-        async function streamZipDownload(selectedFiles, zipFileName) {
-            // Prüfen, ob File System Access API verfügbar ist (Chrome/Edge native)
-            const supportsFileSystemAccess = 'showSaveFilePicker' in window;
-            
-            // StreamSaver als primäre Methode für alle Browser
-            if (typeof streamSaver !== 'undefined') {
-                await streamZipWithStreamSaver(selectedFiles, zipFileName);
-            } else if (supportsFileSystemAccess) {
-                await streamZipWithFileSystemAPI(selectedFiles, zipFileName);
-            } else {
-                await streamZipFallback(selectedFiles, zipFileName);
-            }
-        }
-
-        async function streamZipWithStreamSaver(selectedFiles, zipFileName) {
-            // StreamSaver - funktioniert in allen modernen Browsern!
-            const fileStream = streamSaver.createWriteStream(zipFileName, {
-                size: undefined // Unbekannte Größe
-            });
-
-            const writer = fileStream.getWriter();
-            let totalSize = 0;
-
-            // ZIP-Writer mit fflate für Streaming
-            const zipWriter = new fflate.Zip();
-
-            // Event-Handler für ZIP-Daten - schreibt direkt in den Stream!
-            zipWriter.ondata = async (err, data, final) => {
-                if (err) {
-                    console.error('ZIP Error:', err);
-                    await writer.abort();
-                    return;
-                }
-                
-                try {
-                    // Chunk direkt in Stream schreiben
-                    await writer.write(data);
-                    totalSize += data.length;
-                    
-                    if (final) {
-                        await writer.close();
-                        updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
-                    }
-                } catch (writeError) {
-                    console.error('Write error:', writeError);
-                    showError('Fehler beim Schreiben: ' + writeError.message);
-                }
-            };
-
-            // Dateien sequenziell laden und streamen
-            try {
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const fileName = selectedFiles[i];
-                    
-                    try {
-                        await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
-                    } catch (error) {
-                        console.error(`Fehler bei Datei ${fileName}:`, error);
-                        showError(`Fehler bei Datei ${fileName}: ${error.message}`);
-                    }
-                }
-
-                updateProgress(95, 'Finalisiere ZIP-Archiv...');
-                zipWriter.end();
-            } catch (error) {
-                await writer.abort();
-                throw error;
-            }
-        }
-
-        async function streamZipWithFileSystemAPI(selectedFiles, zipFileName) {
-            try {
-                // Datei-Dialog sofort anzeigen - User Experience!
-                const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: zipFileName,
-                    types: [{
-                        description: 'ZIP Archive',
-                        accept: { 'application/zip': ['.zip'] }
-                    }]
-                });
-
-                const writable = await fileHandle.createWritable();
-                let totalSize = 0;
-
-                // ZIP-Writer mit fflate für Streaming
-                const zipWriter = new fflate.Zip();
-
-                // Event-Handler für ZIP-Daten - schreibt direkt in die Datei!
-                zipWriter.ondata = async (err, data, final) => {
-                    if (err) {
-                        console.error('ZIP Error:', err);
-                        await writable.abort();
-                        return;
-                    }
-                    
-                    // Chunk direkt in Datei schreiben
-                    await writable.write(data);
-                    totalSize += data.length;
-                    
-                    if (final) {
-                        await writable.close();
-                        updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
-                    }
-                };
-
-                // Dateien sequenziell laden und streamen
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const fileName = selectedFiles[i];
-                    
-                    try {
-                        await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
-                    } catch (error) {
-                        console.error(`Fehler bei Datei ${fileName}:`, error);
-                        showError(`Fehler bei Datei ${fileName}: ${error.message}`);
-                    }
-                }
-
-                updateProgress(95, 'Finalisiere ZIP-Archiv...');
-                zipWriter.end();
-                
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    updateProgress(0, 'Download abgebrochen');
-                } else {
-                    throw error;
-                }
-            }
-        }
-
-        async function streamZipFallback(selectedFiles, zipFileName) {
-            // Fallback für ältere Browser
-            const zipWriter = new fflate.Zip();
-            const chunks = [];
-            let totalSize = 0;
-
-            zipWriter.ondata = (err, data, final) => {
-                if (err) {
-                    console.error('ZIP Error:', err);
-                    return;
-                }
-                
-                chunks.push(data);
-                totalSize += data.length;
-                
-                if (final) {
-                    const blob = new Blob(chunks, { type: 'application/zip' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = zipFileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    updateProgress(100, `ZIP-Datei erfolgreich erstellt! (${formatFileSize(totalSize)})`);
-                }
-            };
-
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const fileName = selectedFiles[i];
-                
-                try {
-                    await streamFileToZip(zipWriter, fileName, i, selectedFiles.length);
-                } catch (error) {
-                    console.error(`Fehler bei Datei ${fileName}:`, error);
-                    showError(`Fehler bei Datei ${fileName}: ${error.message}`);
-                }
-            }
-
-            updateProgress(95, 'Finalisiere ZIP-Archiv...');
-            zipWriter.end();
-        }
-
-        async function streamFileToZip(zipWriter, fileName, fileIndex, totalFiles) {
-            const fileUrl = API_BASE_URL + fileName;
-            const prefixedName = 'batchload_' + fileName;
-            
-            const response = await fetch(fileUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            // Dateigröße aus Header auslesen
-            const contentLength = response.headers.get('content-length');
-            const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-            let loadedBytes = 0;
-
-            // File-Writer für diese Datei im ZIP erstellen
-            const fileWriter = new fflate.ZipDeflate(prefixedName, { level: 6 });
-            
-            // File-Writer dem ZIP-Writer hinzufügen
-            zipWriter.add(fileWriter);
-
-            // ReadableStream aus der Response holen
-            const reader = response.body.getReader();
-
-            try {
-                // Stream chunk-weise lesen und direkt an ZIP weiterleiten
-                while (true) {
-                    let result;
-                    try {
-                        result = await reader.read();
-                    } catch (readError) {
-                        console.error('Stream read error:', readError);
-                        throw new Error(`Fehler beim Lesen des Streams: ${readError.message}`);
-                    }
-                    
-                    const { done, value } = result;
-                    
-                    if (done) {
-                        // Datei ist komplett gelesen, File-Writer beenden
-                        fileWriter.push(new Uint8Array(0), true); // Finales leeres Chunk
-                        break;
-                    }
-                    
-                    if (!value || value.length === 0) {
-                        continue; // Leere Chunks überspringen
-                    }
-                    
-                    // Chunk an File-Writer weiterleiten
-                    try {
-                        fileWriter.push(value, false);
-                    } catch (pushError) {
-                        console.error('ZIP push error:', pushError);
-                        throw new Error(`Fehler beim Komprimieren: ${pushError.message}`);
-                    }
-                    
-                    // Fortschritt aktualisieren
-                    loadedBytes += value.length;
-                    if (totalBytes > 0) {
-                        const fileProgress = (loadedBytes / totalBytes) * 100;
-                        const overallProgress = ((fileIndex + fileProgress / 100) / totalFiles) * 90;
-                        updateProgress(
-                            overallProgress.toFixed(1), 
-                            `Datei ${fileIndex + 1}/${totalFiles}: ${fileName} (${formatFileSize(loadedBytes)}/${formatFileSize(totalBytes)} - ${fileProgress.toFixed(0)}%)`
-                        );
-                    }
-                    
-                    // Kleine Pause für Firefox, um den Event Loop nicht zu blockieren
-                    if (loadedBytes % (1024 * 1024 * 10) < value.length) { // Alle ~10MB
-                        await new Promise(resolve => setTimeout(resolve, 0));
-                    }
-                }
-            } catch (error) {
-                // Stream explizit abbrechen bei Fehler
-                try {
-                    await reader.cancel();
-                } catch (e) {
-                    console.error('Error canceling reader:', e);
-                }
-                throw error;
-            } finally {
-                try {
-                    reader.releaseLock();
-                } catch (e) {
-                    // Lock könnte bereits freigegeben sein
-                    console.debug('Reader lock already released');
-                }
-            }
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
-        function updateProgress(percent, text) {
-            document.getElementById('progressFill').style.width = percent + '%';
-            document.getElementById('progressText').textContent = text;
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
-
-        function hideError() {
-            document.getElementById('error').style.display = 'none';
-        }
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
