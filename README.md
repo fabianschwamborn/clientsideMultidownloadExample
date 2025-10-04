@@ -12,6 +12,16 @@ A lightweight, client-side web application for downloading multiple files and pa
 - ⚡ **Instant Download**: Download starts immediately with visible progress
 - 🔒 **Client-Side Only**: No server-side processing required - everything runs in the browser
 
+## Pre-Requirements
+
+A **server hosting test files with a file list** is required. The server must:
+- Provide an `index.txt` file containing a list of available files (one filename per line)
+- Host the actual files referenced in `index.txt`
+- Have CORS enabled to allow browser access
+
+**Example Setup:**
+The [uncompressableTestfiles](https://github.com/fabianschwamborn/uncompressableTestfiles) repository can be used to quickly set up a test file server with appropriate test files.
+
 ## Technology Stack
 
 - **Pure JavaScript** (Vanilla JS - no frameworks)
@@ -45,10 +55,79 @@ const API_BASE_URL = 'https://testfiles.xxip.de/';
 const INDEX_URL = API_BASE_URL + 'index.txt';
 ```
 
-To use with your own server:
-1. Host your files on a CORS-enabled server
-2. Create an `index.txt` file with one filename per line
-3. Update the `API_BASE_URL` in `index.html`
+When using a custom server:
+1. Files are hosted on a CORS-enabled server
+2. An `index.txt` file is created with one filename per line
+3. The `API_BASE_URL` in `index.html` is updated accordingly
+
+## Server Configuration Requirements
+
+### CORS and Cache Headers
+
+When hosting the application on a different domain than the file server, **both CORS and cache-control headers must be properly configured**. These headers are equally critical for reliable operation, especially during testing.
+
+⚠️ The following configurations are provided as brief reminders for testing; when files are served, server response headers (CORS and cache-control) shall be configured to match the real deployment and be optimized for the intended use case (for example, by enabling efficient browser caching with ETag/Last-Modified and appropriate Cache-Control directives).
+
+**Required Server Response Headers:**
+
+```http
+Access-Control-Allow-Origin: https://playground.xxip.de
+Access-Control-Allow-Methods: GET, HEAD
+Access-Control-Expose-Headers: Content-Length, Content-Range
+Access-Control-Max-Age: 0
+Cache-Control: no-cache, no-store, must-revalidate
+Pragma: no-cache
+Expires: 0
+```
+
+**Header Essentials:**
+- `Access-Control-Allow-Origin` - Specify exact origin (e.g., `https://playground.xxip.de`)
+- `Access-Control-Expose-Headers` - Exposes `Content-Length` for progress tracking
+- `Access-Control-Max-Age: 0` - **Critical**: Prevents CORS preflight caching during testing
+- `Cache-Control: no-cache, no-store` - **Critical**: Prevents file content caching during testing
+
+### ⚠️ Critical: Browser Caching Issues
+
+**Both CORS headers AND file content are aggressively cached by browsers**, causing severe testing problems:
+
+**Common Cache-Related Problems:**
+1. **CORS Preflight Caching:**
+   - Browsers cache CORS decisions for seconds to hours (default `Access-Control-Max-Age`)
+   - Server CORS changes don't take effect until cache expires
+   - Results in persistent CORS errors despite correct server configuration
+
+2. **File Content Caching:**
+   - Updated `index.txt` not reflected (shows old file list)
+   - Modified test files not re-downloaded
+   - `Content-Length` mismatches break progress calculation
+
+3. **Combined Effect:**
+   - Even with fresh file content, cached CORS headers block access
+   - File list (`index.txt`) particularly problematic: content AND CORS both cached
+   - Changes invisible until both caches clear
+
+**Symptoms:**
+- Application works, then fails with CORS errors after server reconfiguration
+- File list doesn't update despite server changes
+- Intermittent "No CORS headers" errors with correct server config
+- Different behavior across browsers/sessions
+
+**Testing Solutions:**
+- ⚠️ **Use Private/Incognito mode** - Bypasses all browser caches
+- ⚠️ **Set both `Access-Control-Max-Age: 0` AND `Cache-Control: no-cache`** - Prevents both types of caching
+- ⚠️ **Clear browser cache completely** before testing configuration changes
+- ⚠️ **Enable "Disable cache" in DevTools Network tab** during development
+- ⚠️ **Verify headers with `curl -I`** to confirm server-side configuration
+
+**Production Configuration:**
+```http
+Access-Control-Allow-Origin: https://playground.xxip.de
+Access-Control-Max-Age: 3600
+Cache-Control: public, max-age=31536000, immutable
+```
+- Increase `Access-Control-Max-Age` for performance (e.g., 3600 seconds)
+- Use long cache times for immutable content
+- Consider filename versioning (e.g., `file-v1.dat`) for cache busting
 
 ## Browser Compatibility
 
@@ -75,7 +154,7 @@ The application uses streaming techniques to handle files of any size:
 - Compressed data is streamed directly to disk
 - Memory usage stays constant regardless of file size
 
-This means you can download hundreds of MB or even GB of files without running out of memory!
+This allows downloading hundreds of MB or even GB of files without running out of memory!
 
 ## License
 
@@ -84,6 +163,10 @@ MIT License - See [LICENSE](LICENSE) file for details
 ## Author
 
 Built with ❤️ for efficient client-side file handling
+
+## Repository
+
+This project is available on GitHub: [https://github.com/fabianschwamborn/clientsideMultidownloadExample](https://github.com/fabianschwamborn/clientsideMultidownloadExample)
 
 ## Contributing
 
