@@ -34,6 +34,9 @@
                 <li><strong>User Control:</strong> Manual download method selection and force fallback option</li>
                 <li><strong>Page Protection:</strong> Prevents accidental closure during active downloads</li>
             </ul>
+            <div class="not-implemented" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin-top: 15px;">
+                <strong>💡 Fallback Strategy Discussion:</strong> The current blob fallback method (used when streaming fails) has high memory usage and may fail with large files. An alternative approach could be to skip ZIP creation entirely in fallback scenarios and instead download each file individually with sequential naming (e.g., <code>batchload_001_filename.ext</code>, <code>batchload_002_filename.ext</code>, etc.). This would eliminate memory constraints and improve reliability for large batch downloads, though users would receive multiple files instead of a single ZIP archive. Further evaluation needed to determine the optimal fallback strategy based on file sizes and browser capabilities.
+            </div>
             <div class="not-implemented">
                 <strong>⚠️ Not Yet Implemented:</strong> Page-independent service worker for background downloads (would allow page navigation during download)
             </div>
@@ -87,7 +90,7 @@
         
         <div class="debug-console">
             <div class="debug-header">
-                <span>🐛 Debug Console (Mobile-Friendly)</span>
+                <span>🐛 Debug Console (Mobile-Friendly debugging)</span>
                 <button class="debug-clear" onclick="clearDebugConsole()">Clear</button>
             </div>
             <div id="debugOutput"></div>

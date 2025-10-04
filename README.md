@@ -42,10 +42,10 @@ The [uncompressableTestfiles](https://github.com/fabianschwamborn/uncompressable
 
 1. Open `website/index.html` in a web browser
 2. Wait for the file list to load
-3. Select the files you want to download
-4. Click "Ausgewählte Dateien herunterladen"
-5. Choose where to save the ZIP file
-6. Watch the progress as files are downloaded and compressed
+3. Select files to download using checkboxes
+4. Click "Download Selected Files"
+5. Choose where to save the ZIP file (if using File System API)
+6. Monitor progress as files are downloaded and compressed
 
 ## Configuration
 
@@ -141,7 +141,11 @@ Cache-Control: public, max-age=31536000, immutable
 ```
 clientsideMultidownloadExample/
 ├── website/
-│   └── index.html          # Main application (single HTML file)
+│   ├── index.html          # Main HTML page
+│   ├── app.js              # Application logic
+│   ├── styles.css          # Styling
+│   ├── sw.js               # Service worker for StreamSaver
+│   └── mitm.html           # StreamSaver fallback page
 ├── README.md               # This file
 └── LICENSE                 # MIT License
 ```
@@ -162,11 +166,39 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## Author
 
-Built with ❤️ for efficient client-side file handling
+Built with ❤️ and AI for efficient client-side file handling
 
 ## Repository
 
 This project is available on GitHub: [https://github.com/fabianschwamborn/clientsideMultidownloadExample](https://github.com/fabianschwamborn/clientsideMultidownloadExample)
+
+## Potential Improvements
+
+The following features could be implemented to enhance the application:
+
+### UI/UX Enhancements
+- **Download Progress Overlay**: Implement a modal overlay to display download progress, preventing interaction during active downloads
+- **Drag-and-Drop File Selection**: Add drag-and-drop interface for easier file selection
+- **File Size Display**: Show individual file sizes in the file list before downloading
+- **Download History**: Track and display recently downloaded file combinations
+- **Theme Toggle**: Add light/dark theme switcher
+
+### Technical Enhancements
+- **Service Worker Background Downloads**: Implement page-independent service worker to allow navigation during downloads (currently marked as "Not Yet Implemented")
+- **Pause/Resume Downloads**: Add ability to pause and resume ongoing downloads
+- **Parallel Downloads**: Download multiple files simultaneously instead of sequentially
+- **Download Speed Limiter**: Add option to limit download speed to prevent bandwidth saturation
+- **Retry Failed Downloads**: Automatic retry mechanism for failed file downloads
+- **Compression Level Selection**: Allow users to choose ZIP compression level (faster vs. smaller)
+- **Alternative Fallback Strategy**: Instead of using blob method (high memory usage) when streaming fails, split batch downloads into individual file downloads with appropriate naming (e.g., `batchload_001_filename.ext`). This would avoid memory issues while still providing all files to the user.
+
+### Advanced Features
+- **Custom File Naming**: Allow users to rename files before adding to ZIP
+- **Folder Structure**: Support for organizing files into folders within the ZIP archive
+- **Download Scheduler**: Schedule downloads for specific times
+- **Bandwidth Monitor**: Display real-time network usage statistics
+
+Note: These are suggestions for future development and are not currently implemented.
 
 ## Contributing
 
