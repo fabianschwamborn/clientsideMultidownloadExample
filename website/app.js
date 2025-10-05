@@ -3,6 +3,7 @@ const INDEX_URL = API_BASE_URL + 'index.txt';
 
 let fileList = [];
 let isDownloading = false;
+let fileSizesCache = {}; // Cache for file sizes
 
 // StreamSaver configuration - use local service worker
 if (typeof streamSaver !== 'undefined') {
@@ -390,7 +391,17 @@ function displayFileList() {
 function updateMethodInfo() {
     const useFileSystemAPI = document.getElementById('useFileSystemAPI');
     const forceBlobFallback = document.getElementById('forceBlobFallback');
+    const blobFallbackModeRadios = document.querySelectorAll('input[name="blobFallbackMode"]');
     if (!useFileSystemAPI || !forceBlobFallback) return;
+    
+    // Get selected radio button value
+    let blobFallbackMode = 'auto-fallback'; // default
+    for (const radio of blobFallbackModeRadios) {
+        if (radio.checked) {
+            blobFallbackMode = radio.value;
+            break;
+        }
+    }
     
     const supportsFileSystemAccess = 'showSaveFilePicker' in window;
     const hasStreamSaver = typeof streamSaver !== 'undefined';
@@ -402,8 +413,16 @@ function updateMethodInfo() {
     
     // Force blob fallback is checked - override everything
     if (forceBlobFallback.checked) {
-        message = '⚠ BLOB METHOD FORCED - High memory usage, may fail with large files!';
-        type = 'warning';
+        if (blobFallbackMode === 'no-fallback') {
+            message = '⚠ BLOB METHOD FORCED - Will download individual files (no ZIP)';
+            type = 'warning';
+        } else if (blobFallbackMode === 'auto-fallback') {
+            message = '⚠ BLOB METHOD FORCED - Automatic fallback for files > 101 MiB';
+            type = 'warning';
+        } else {
+            message = '⚠ BLOB METHOD FORCED - High memory usage, may fail with large files!';
+            type = 'warning';
+        }
         showBlobWarning();
         showMethodInfo(message, type);
         return;
@@ -450,7 +469,116 @@ document.addEventListener('DOMContentLoaded', function() {
     if (forceBlobCheckbox) {
         forceBlobCheckbox.addEventListener('change', updateMethodInfo);
     }
+    
+    const blobFallbackRadios = document.querySelectorAll('input[name="blobFallbackMode"]');
+    blobFallbackRadios.forEach(radio => {
+        radio.addEventListener('change', updateMethodInfo);
+    });
 });
+
+// Load file sizes on-demand (only when needed for fallback)
+async function loadFileSizesIfNeeded(selectedFiles) {
+    console.info('=== Loading File Sizes for Fallback Decision ===');
+    const loadPromises = selectedFiles.map(async (fileName) => {
+        // Skip if already cached
+        if (fileSizesCache[fileName] !== undefined) {
+            console.info(`  ${fileName}: ${formatFileSize(fileSizesCache[fileName])} (cached)`);
+            return;
+        }
+        
+        try {
+            const size = await getFileSize(fileName);
+            fileSizesCache[fileName] = size;
+            console.info(`  ${fileName}: ${formatFileSize(size)}`);
+        } catch (error) {
+            console.warn(`  Failed to get size for ${fileName}: ${error.message}`);
+            fileSizesCache[fileName] = 0; // Unknown size
+        }
+    });
+    
+    await Promise.all(loadPromises);
+    console.info(`=== File Sizes Loaded (${selectedFiles.length} files) ===`);
+}
+
+// Get file size via HEAD request
+async function getFileSize(fileName) {
+    const response = await fetch(API_BASE_URL + fileName, { 
+        method: 'HEAD',
+        cache: 'no-cache'
+    });
+    
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const size = response.headers.get('content-length');
+    return size ? parseInt(size, 10) : 0;
+}
+
+// Calculate total size of selected files
+function calculateTotalSize(selectedFiles) {
+    let totalSize = 0;
+    for (const fileName of selectedFiles) {
+        totalSize += fileSizesCache[fileName] || 0;
+    }
+    return totalSize;
+}
+
+// Check if blob fallback should be used based on size
+async function shouldUseBlobFallback(selectedFiles) {
+    const forceBlobFallback = document.getElementById('forceBlobFallback').checked;
+    
+    if (!forceBlobFallback) {
+        return false; // No forced fallback
+    }
+    
+    // Get selected radio button value
+    const blobFallbackModeRadios = document.querySelectorAll('input[name="blobFallbackMode"]');
+    let blobFallbackMode = 'auto-fallback'; // default
+    for (const radio of blobFallbackModeRadios) {
+        if (radio.checked) {
+            blobFallbackMode = radio.value;
+            break;
+        }
+    }
+    
+    // For 'no-fallback' mode, we don't need to check sizes
+    if (blobFallbackMode === 'no-fallback') {
+        console.info('=== Blob Fallback Check ===');
+        console.info('  Fallback mode: no-fallback');
+        console.info('  Decision: Will download files individually (no ZIP)');
+        return { useFallback: true, mode: 'individual' };
+    }
+    
+    // For 'forced-fallback', we don't need to check sizes either
+    if (blobFallbackMode === 'forced-fallback') {
+        console.info('=== Blob Fallback Check ===');
+        console.info('  Fallback mode: forced-fallback');
+        console.info('  Decision: Forced blob ZIP creation');
+        return { useFallback: true, mode: 'blob-zip' };
+    }
+    
+    // For 'auto-fallback', we need to load sizes and check threshold
+    console.info('=== Blob Fallback Check ===');
+    console.info('  Fallback mode: auto-fallback');
+    console.info('  Loading file sizes to determine strategy...');
+    
+    // Load sizes only for selected files
+    await loadFileSizesIfNeeded(selectedFiles);
+    
+    const totalSize = calculateTotalSize(selectedFiles);
+    const sizeMiB = totalSize / (1024 * 1024);
+    
+    console.info(`  Total size: ${formatFileSize(totalSize)} (${sizeMiB.toFixed(2)} MiB)`);
+    
+    if (sizeMiB > 101) {
+        console.info('  Decision: Size > 101 MiB - Will download files individually');
+        return { useFallback: true, mode: 'individual' };
+    } else {
+        console.info('  Decision: Size ≤ 101 MiB - Will create ZIP via blob');
+        return { useFallback: true, mode: 'blob-zip' };
+    }
+}
 
 function selectAll() {
     const checkboxes = document.querySelectorAll('.file-checkbox');
@@ -484,6 +612,10 @@ async function downloadSelected() {
 
     console.info(`=== Starting Download of ${selectedFiles.length} file(s) ===`);
     console.info('Selected files: ' + selectedFiles.join(', '));
+    
+    // Check blob fallback settings (now async)
+    const fallbackCheck = await shouldUseBlobFallback(selectedFiles);
+    
     isDownloading = true;
     document.getElementById('downloadBtn').disabled = true;
     document.getElementById('progress').style.display = 'block';
@@ -491,8 +623,40 @@ async function downloadSelected() {
     hideBlobWarning();
 
     try {
+        // Special handling for blob fallback with individual file downloads
+        if (fallbackCheck && fallbackCheck.useFallback && fallbackCheck.mode === 'individual') {
+            console.info('=== Blob Fallback: Individual File Downloads ===');
+            
+            // Load sizes if not already loaded (for display purposes)
+            await loadFileSizesIfNeeded(selectedFiles);
+            const totalSize = calculateTotalSize(selectedFiles);
+            console.info(`Total size to download: ${formatFileSize(totalSize)}`);
+            
+            // Warn user about CORS limitation - files will NOT be renamed
+            const sizeWarning = totalSize > 0 ? `\n\nTotal size: ${formatFileSize(totalSize)}` : '';
+            const userConfirmed = confirm(
+                `⚠️ Individual File Download (Direct, No Blob)\n\n` +
+                `This will download ${selectedFiles.length} files separately in parallel.\n\n` +
+                `⚠️ IMPORTANT: Due to cross-origin restrictions (CORS), files will download ` +
+                `with their ORIGINAL names, NOT with "fallback_X_" prefix. ` +
+                `Renaming would require loading files into memory (blob), which may crash the browser for large files.${sizeWarning}\n\n` +
+                `Continue with direct download (original filenames)?`
+            );
+            
+            if (!userConfirmed) {
+                console.info('User cancelled download');
+                return;
+            }
+            
+            if (totalSize > 0) {
+                showBlobWarning();
+                showMethodInfo(`📦 Downloading ${selectedFiles.length} files individually (Total: ${formatFileSize(totalSize)})`, 'info');
+            }
+            
+            await downloadFilesIndividually(selectedFiles);
+        }
         // Special case: Single file - download directly without zipping
-        if (selectedFiles.length === 1) {
+        else if (selectedFiles.length === 1) {
             console.info('Single file selected - downloading directly (no ZIP)');
             await downloadSingleFile(selectedFiles[0]);
         } else {
@@ -502,6 +666,17 @@ async function downloadSelected() {
             const zipFileName = `${timestamp}-batchload.zip`;
 
             console.info(`ZIP filename: ${zipFileName}`);
+            
+            // Log size if using blob method
+            if (fallbackCheck && fallbackCheck.useFallback && fallbackCheck.mode === 'blob-zip') {
+                // Load sizes if not already loaded
+                await loadFileSizesIfNeeded(selectedFiles);
+                const totalSize = calculateTotalSize(selectedFiles);
+                console.info(`=== Blob ZIP Method ===`);
+                console.info(`Total blob size: ${formatFileSize(totalSize)}`);
+                showMethodInfo(`⚠ Creating ZIP via Blob (${formatFileSize(totalSize)})`, 'warning');
+            }
+            
             await streamZipDownload(selectedFiles, zipFileName);
         }
 
@@ -524,6 +699,47 @@ async function downloadSelected() {
             hideBlobWarning();
         }, 3000);
     }
+}
+
+// Download multiple files individually (fallback strategy) - PARALLEL, NO RENAMING
+async function downloadFilesIndividually(selectedFiles) {
+    console.info(`=== Downloading ${selectedFiles.length} files individually (DIRECT, NO BLOB, NO RENAME) ===`);
+    
+    const totalFiles = selectedFiles.length;
+    const progressText = document.getElementById('progressText');
+    const progressFill = document.getElementById('progressFill');
+    
+    if (progressText) {
+        progressText.textContent = `Triggering ${totalFiles} direct downloads...`;
+    }
+    
+    // Temporarily disable beforeunload warning for direct downloads
+    isDownloading = false;
+    
+    // IMPORTANT: Cross-origin CORS limitation
+    // This function uses DIRECT downloads (NO blob) to avoid memory issues with large files.
+    // Trade-off: The browser's 'download' attribute is IGNORED for cross-origin requests (CORS security).
+    // Result: Files download with ORIGINAL names, NOT "fallback_X_" prefix.
+    // Alternative would be to load into blob for renaming, but that may crash browser with large files.
+    
+    // Trigger all downloads in parallel - direct browser downloads, no blob, no rename
+    selectedFiles.forEach((fileName, i) => {
+        const prefixedName = `fallback_${i + 1}_${fileName}`;
+        console.info(`[${i + 1}/${totalFiles}] Direct download: ${fileName} (prefix ignored by browser due to CORS)`);
+        
+        const a = document.createElement('a');
+        a.href = API_BASE_URL + fileName;
+        a.download = prefixedName;  // IGNORED by browser for cross-origin downloads
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => document.body.removeChild(a), 100);
+    });
+    
+    console.info('✓ All direct downloads triggered (files will use original names due to CORS)');
+    if (progressText) progressText.textContent = `All ${totalFiles} files downloading with original names!`;
+    if (progressFill) progressFill.style.width = '100%';
 }
 
 // Download a single file directly (without ZIP) with "singlefile_" prefix
@@ -822,11 +1038,23 @@ async function streamZipDownload(selectedFiles, zipFileName) {
     const forceBlobFallback = document.getElementById('forceBlobFallback').checked;
     
     if (forceBlobFallback) {
-        console.warn('⚠ Blob fallback FORCED by user');
-        showMethodInfo('⚠ Blob method forced (as requested)', 'warning');
-        showBlobWarning();
-        await streamZipFallback(selectedFiles, zipFileName);
-        return;
+        const fallbackCheck = await shouldUseBlobFallback(selectedFiles);
+        
+        if (fallbackCheck && fallbackCheck.mode === 'blob-zip') {
+            // Load sizes if needed for logging
+            await loadFileSizesIfNeeded(selectedFiles);
+            const totalSize = calculateTotalSize(selectedFiles);
+            console.warn('⚠ Blob ZIP fallback FORCED by user');
+            console.warn(`⚠ Estimated blob size: ${formatFileSize(totalSize)}`);
+            showMethodInfo(`⚠ Blob ZIP method forced (${formatFileSize(totalSize)})`, 'warning');
+            showBlobWarning();
+            await streamZipFallback(selectedFiles, zipFileName);
+            return;
+        } else if (fallbackCheck && fallbackCheck.mode === 'individual') {
+            // This case is already handled in downloadSelected()
+            console.error('ERROR: Individual download mode should not reach streamZipDownload');
+            return;
+        }
     }
     
     // Check user preference for File System API
@@ -1090,9 +1318,21 @@ async function streamZipFallback(selectedFiles, zipFileName) {
     // Fallback for older browsers
     // NOTE: This blob method uses high memory and may fail with large files.
     // ALTERNATIVE STRATEGY: Instead of creating a ZIP via blob, consider downloading
-    // each file individually with sequential naming (e.g., batchload_001_filename.ext,
-    // batchload_002_filename.ext, etc.). This would avoid memory issues entirely while
+    // each file individually with sequential naming (e.g., fallback_1_filename.ext,
+    // fallback_2_filename.ext, etc.). This would avoid memory issues entirely while
     // still providing all files to the user, though not in a single ZIP archive.
+    
+    // Load sizes on-demand for logging
+    await loadFileSizesIfNeeded(selectedFiles);
+    const estimatedTotalSize = calculateTotalSize(selectedFiles);
+    console.warn('=== BLOB ZIP FALLBACK ===');
+    console.warn(`Creating ZIP via blob for ${selectedFiles.length} files`);
+    console.warn(`Estimated total size: ${formatFileSize(estimatedTotalSize)}`);
+    
+    if (estimatedTotalSize > 100 * 1024 * 1024) { // 100 MB
+        console.warn(`⚠ WARNING: Large blob size (${formatFileSize(estimatedTotalSize)}) may cause memory issues!`);
+    }
+    
     const zipWriter = new fflate.Zip();
     const chunks = [];
     let totalSize = 0;

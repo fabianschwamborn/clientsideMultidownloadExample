@@ -61,14 +61,49 @@
                     When disabled or unavailable, starts streaming download directly.
                 </p>
                 
-                <label class="option-label">
-                    <input type="checkbox" id="forceBlobFallback">
-                    <span>Force Blob Fallback (Debug/Testing)</span>
-                </label>
-                <p class="option-description">
-                    Forces the use of blob method instead of streaming APIs. Only use for testing or compatibility issues.
-                    ⚠️ Warning: Uses more memory and may fail with very large files!
-                </p>
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                    <h4 style="margin-top: 0; margin-bottom: 10px; color: #495057; font-size: 15px;">Blob Fallback Strategy</h4>
+                    <p class="option-description" style="margin-left: 0; margin-bottom: 15px;">
+                        If streaming methods fail or are unavailable, the system will use blob fallback. Choose your preferred strategy:
+                    </p>
+                    
+                    <label class="option-label">
+                        <input type="radio" name="blobFallbackMode" value="no-fallback">
+                        <span>Download files individually (no ZIP) - Safest option</span>
+                    </label>
+                    <p class="option-description">
+                        Downloads each file separately with prefix fallback_1_, fallback_2_, etc.
+                        Avoids memory issues completely. Recommended for large batches.
+                    </p>
+                    
+                    <label class="option-label">
+                        <input type="radio" name="blobFallbackMode" value="auto-fallback" checked>
+                        <span>Automatic: Individual if &gt; 101 MiB, otherwise ZIP</span>
+                    </label>
+                    <p class="option-description">
+                        Smart fallback: Uses individual downloads for large batches (&gt;101 MiB total),
+                        creates ZIP via blob for smaller batches. Balances convenience and safety.
+                    </p>
+                    
+                    <label class="option-label">
+                        <input type="radio" name="blobFallbackMode" value="forced-fallback">
+                        <span>Always create ZIP via blob - High memory usage!</span>
+                    </label>
+                    <p class="option-description">
+                        ⚠️ Forces ZIP creation via blob method. May cause browser freeze or crash with large files!
+                    </p>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                    <label class="option-label">
+                        <input type="checkbox" id="forceBlobFallback">
+                        <span>Force Blob Fallback (Debug/Testing)</span>
+                    </label>
+                    <p class="option-description">
+                        Forces the use of blob method instead of streaming APIs. Only use for testing or compatibility issues.
+                        The blob fallback strategy selected above will be applied.
+                    </p>
+                </div>
                 
                 <div id="downloadMethodInfo" class="method-info"></div>
             </div>

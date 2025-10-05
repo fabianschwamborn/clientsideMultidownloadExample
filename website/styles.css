@@ -238,9 +238,11 @@ h1 {
     cursor: pointer;
     font-size: 14px;
     color: #333;
+    margin: 8px 0;
 }
 
-.option-label input[type="checkbox"] {
+.option-label input[type="checkbox"],
+.option-label input[type="radio"] {
     margin-right: 8px;
     width: 18px;
     height: 18px;

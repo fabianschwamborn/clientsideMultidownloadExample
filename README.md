@@ -160,6 +160,81 @@ The application uses streaming techniques to handle files of any size:
 
 This allows downloading hundreds of MB or even GB of files without running out of memory!
 
+## Download Strategy
+
+The application uses a progressive fallback strategy, prioritizing user convenience and memory efficiency. The strategy differs based on whether a single file or multiple files are selected.
+
+### Single File Downloads (No ZIP)
+**Single files are never packaged in a ZIP archive**
+
+When only one file is selected, the application downloads it directly with a "singlefile_" prefix using a separate code path:
+
+**If "Force Blob Fallback" is enabled:**
+- Uses blob method immediately (ignores the three-mode strategy)
+
+**Otherwise, progressive fallback:**
+1. **File System Access API** (if user enabled + Chrome/Edge desktop)
+   - User selects save location via dialog
+   - File streamed directly to chosen location
+   - Memory-efficient streaming
+
+2. **StreamSaver.js** (if File System API not requested or failed)
+   - Direct streaming download without dialog
+   - Service worker handles streaming to disk
+   - Memory-efficient streaming
+
+3. **Blob Method** (last resort if streaming fails)
+   - **Mode 1 (No Fallback)**: File downloaded directly, original filename kept (CORS prevents renaming)
+   - **Mode 2 (Automatic, recommended)**: File size checked - small files loaded as blob for renaming, large files downloaded directly to avoid crash risk (original filename)
+   - **Mode 3 (Forced)**: File always loaded as blob (enables renaming to "singlefile_" prefix) regardless of size - may crash with large files.
+
+### Multiple File Downloads (ZIP Creation)
+
+When multiple files are selected, the application attempts to create a ZIP archive:
+
+**Primary Method: Streaming ZIP Creation**
+When "Force Blob Fallback" is NOT enabled:
+
+1. **File System Access API** (Chrome/Edge desktop, user choice)
+   - User selects save location via dialog
+   - Files streamed and compressed on-the-fly
+   - ZIP archive created directly to disk
+   - Memory-efficient, works with any size
+   - Files packaged with "batchload_" prefix
+
+2. **StreamSaver.js** (Firefox, Safari, mobile, or fallback)
+   - Direct streaming download without dialog
+   - Service worker handles streaming to disk
+   - ZIP archive created on-the-fly
+   - Memory-efficient, works with any size
+   - Files packaged with "batchload_" prefix
+
+**Blob Fallback Strategy**
+
+**Mode 1: No Fallback** (Individual Downloads)
+- Downloads each file separately, in parallel
+- Direct browser downloads (no blob, no ZIP)
+- **CORS Limitation**: Files keep original names - cannot add "fallback_X_" prefix
+- Minimal memory usage, works with any total size
+- Fastest for large batches
+- Trade-off: Files not packaged in ZIP, original filenames only
+
+**Mode 2: Automatic Fallback** (Size-Based) - **Recommended**
+- Checks total file size before download
+- **If ≤ 101 MiB**: Creates ZIP via blob (packaged, moderate memory usage)
+- **If > 101 MiB**: Downloads individually (no ZIP, original names, safe)
+- Balances user convenience with browser stability
+- Automatic decision based on measured file sizes
+
+**Mode 3: Forced Blob ZIP**
+- Always creates ZIP via blob method regardless of size
+- **Warning**: High memory usage, may crash browser with large files
+- Use only for small batches (<100 MiB) or when ZIP packaging is critical
+- Files packaged with "batchload_" prefix
+
+### Cross-Origin Security Note
+Browser security (CORS) prevents renaming files from different domains without loading them into memory (blob). Direct streaming downloads preserve original filenames. To rename files, blob conversion is required, which consumes memory proportional to file size.
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) file for details
@@ -190,7 +265,6 @@ The following features could be implemented to enhance the application:
 - **Download Speed Limiter**: Add option to limit download speed to prevent bandwidth saturation
 - **Retry Failed Downloads**: Automatic retry mechanism for failed file downloads
 - **Compression Level Selection**: Allow users to choose ZIP compression level (faster vs. smaller)
-- **Alternative Fallback Strategy**: Instead of using blob method (high memory usage) when streaming fails, split batch downloads into individual file downloads with appropriate naming (e.g., `batchload_001_filename.ext`). This would avoid memory issues while still providing all files to the user.
 
 ### Advanced Features
 - **Custom File Naming**: Allow users to rename files before adding to ZIP
