@@ -2,6 +2,10 @@
 
 A lightweight, client-side web application for downloading multiple files and packaging them into a single ZIP archive - all in the browser without server-side processing.
 
+## Important Note
+
+⚠️ **Code Design Philosophy**: This codebase prioritizes comprehensive debugging and testing capabilities over code readability. The implementation includes extensive debug options (force fallback modes, manual method selection, verbose logging) to facilitate testing of various fallback scenarios and edge cases. This results in more complex control flow than a production-focused implementation would require.
+
 ## Features
 
 - 📦 **Batch Download**: Select and download multiple files from a remote server
