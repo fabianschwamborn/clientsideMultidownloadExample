@@ -706,11 +706,16 @@ async function downloadFilesIndividually(selectedFiles) {
     console.info(`=== Downloading ${selectedFiles.length} files individually (DIRECT, NO BLOB, NO RENAME) ===`);
     
     const totalFiles = selectedFiles.length;
-    const progressText = document.getElementById('progressText');
-    const progressFill = document.getElementById('progressFill');
+    const overallProgressText = document.getElementById('overallProgressText');
+    const overallProgressFill = document.getElementById('overallProgressFill');
+    const currentFileProgressText = document.getElementById('currentFileProgressText');
     
-    if (progressText) {
-        progressText.textContent = `Triggering ${totalFiles} direct downloads...`;
+    if (overallProgressText) {
+        overallProgressText.textContent = `Triggering ${totalFiles} direct downloads...`;
+    }
+    
+    if (currentFileProgressText) {
+        currentFileProgressText.textContent = 'Preparing downloads...';
     }
     
     // Temporarily disable beforeunload warning for direct downloads
@@ -738,11 +743,12 @@ async function downloadFilesIndividually(selectedFiles) {
     });
     
     console.info('✓ All direct downloads triggered (files will use original names due to CORS)');
-    if (progressText) progressText.textContent = `All ${totalFiles} files downloading with original names!`;
-    if (progressFill) progressFill.style.width = '100%';
+    if (overallProgressText) overallProgressText.textContent = `All ${totalFiles} files downloading with original names!`;
+    if (overallProgressFill) overallProgressFill.style.width = '100%';
+    if (currentFileProgressText) currentFileProgressText.textContent = 'Downloads initiated';
 }
 
-// Download a single file directly (without ZIP) with "singlefile_" prefix
+// Download single file directly (without ZIP) with "singlefile_" prefix
 async function downloadSingleFile(fileName) {
     console.info(`=== Downloading single file: ${fileName} ===`);
     
@@ -750,23 +756,35 @@ async function downloadSingleFile(fileName) {
     console.info(`New filename: ${newFileName}`);
     
     // Update progress display
-    const progressText = document.getElementById('progressText');
-    const progressFill = document.getElementById('progressFill');
+    const currentFileProgressText = document.getElementById('currentFileProgressText');
+    const currentFileProgressFill = document.getElementById('currentFileProgressFill');
+    const overallProgressText = document.getElementById('overallProgressText');
+    const overallProgressFill = document.getElementById('overallProgressFill');
     
     console.info('Progress elements check:');
-    console.info('  progressText element: ' + (progressText ? 'found' : 'NULL'));
-    console.info('  progressFill element: ' + (progressFill ? 'found' : 'NULL'));
+    console.info('  currentFileProgressText element: ' + (currentFileProgressText ? 'found' : 'NULL'));
+    console.info('  currentFileProgressFill element: ' + (currentFileProgressFill ? 'found' : 'NULL'));
+    console.info('  overallProgressText element: ' + (overallProgressText ? 'found' : 'NULL'));
+    console.info('  overallProgressFill element: ' + (overallProgressFill ? 'found' : 'NULL'));
     
-    if (progressText) {
-        progressText.textContent = `Downloading: ${fileName}`;
+    if (currentFileProgressText) {
+        currentFileProgressText.textContent = fileName;
     } else {
-        console.error('ERROR: progressText element not found!');
+        console.error('ERROR: currentFileProgressText element not found!');
     }
     
-    if (progressFill) {
-        progressFill.style.width = '0%';
+    if (currentFileProgressFill) {
+        currentFileProgressFill.style.width = '0%';
     } else {
-        console.error('ERROR: progressFill element not found!');
+        console.error('ERROR: currentFileProgressFill element not found!');
+    }
+    
+    if (overallProgressText) {
+        overallProgressText.textContent = 'File 1 of 1';
+    }
+    
+    if (overallProgressFill) {
+        overallProgressFill.style.width = '0%';
     }
     
     try {
@@ -861,19 +879,13 @@ async function downloadSingleFileViaFileSystemAPI(fileName, newFileName) {
         
         if (contentLength > 0) {
             const progress = Math.round((receivedLength / contentLength) * 100);
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            if (progressFill) progressFill.style.width = progress + '%';
-            if (progressText) progressText.textContent = `Progress: ${progress}%`;
+            updateProgress(progress, 1, 1, fileName, receivedLength, contentLength);
         }
     }
     
     await writableStream.close();
     console.info('✓ Single file download complete (File System API)');
-    const progressText = document.getElementById('progressText');
-    const progressFill = document.getElementById('progressFill');
-    if (progressText) progressText.textContent = 'Download complete!';
-    if (progressFill) progressFill.style.width = '100%';
+    updateProgress(100, 1, 1, fileName, contentLength, contentLength, true);
 }
 
 // Download single file using StreamSaver
@@ -888,9 +900,6 @@ async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
     if (!response.body) {
         throw new Error('ReadableStream not available on fetch response');
     }
-
-    const progressFill = document.getElementById('progressFill');
-    const progressText = document.getElementById('progressText');
 
     const contentLengthHeader = response.headers.get('content-length');
     const contentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
@@ -908,17 +917,13 @@ async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
         }
     }, 5000);
 
-    const updateProgress = (loaded) => {
+    const updateSingleProgress = (loaded) => {
         if (contentLength > 0) {
             const progress = Math.min(100, Math.round((loaded / contentLength) * 100));
-            if (progressFill) progressFill.style.width = progress + '%';
-            if (progressText) progressText.textContent = `Progress: ${progress}%`;
+            updateProgress(progress, 1, 1, fileName, loaded, contentLength);
         } else {
-            if (progressFill) {
-                const width = Math.min(95, Math.max(10, Math.round((loaded / (1024 * 1024)) * 10)));
-                progressFill.style.width = width + '%';
-            }
-            if (progressText) progressText.textContent = `Downloaded ${formatFileSize(loaded)}`;
+            const estimatedProgress = Math.min(95, Math.max(10, Math.round((loaded / (1024 * 1024)) * 10)));
+            updateProgress(estimatedProgress, 1, 1, fileName, loaded, 0);
         }
     };
 
@@ -932,7 +937,7 @@ async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
                         clearTimeout(stallTimeout);
                         console.info('StreamSaver handshake established - streaming data');
                     }
-                    updateProgress(receivedLength);
+                    updateSingleProgress(receivedLength);
                 }
                 controller.enqueue(chunk);
             }
@@ -974,7 +979,7 @@ async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
                     await writer.write(value);
                 }
                 receivedLength += value.length;
-                updateProgress(receivedLength);
+                updateSingleProgress(receivedLength);
             }
             await writer.close();
         } catch (error) {
@@ -990,16 +995,8 @@ async function downloadSingleFileViaStreamSaver(fileName, newFileName) {
 
     clearTimeout(stallTimeout);
 
-    if (contentLength > 0) {
-        updateProgress(contentLength);
-    } else {
-        if (progressFill) progressFill.style.width = '100%';
-        if (progressText) progressText.textContent = 'Download complete!';
-    }
-
+    updateProgress(100, 1, 1, fileName, contentLength || receivedLength, contentLength || receivedLength, true);
     console.info('✓ Single file download complete (StreamSaver)');
-    if (progressText) progressText.textContent = 'Download complete!';
-    if (progressFill) progressFill.style.width = '100%';
 }
 
 // Download single file using Blob (fallback)
@@ -1013,8 +1010,7 @@ async function downloadSingleFileViaBlob(fileName, newFileName) {
     
     const blob = await response.blob();
     
-    const progressText = document.getElementById('progressText');
-    if (progressText) progressText.textContent = 'Creating download link...';
+    updateProgress(90, 1, 1, fileName, blob.size, blob.size);
     
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1027,10 +1023,7 @@ async function downloadSingleFileViaBlob(fileName, newFileName) {
     setTimeout(() => URL.revokeObjectURL(url), 100);
     
     console.info('✓ Single file download complete (Blob)');
-    const progressTextFinal = document.getElementById('progressText');
-    const progressFill = document.getElementById('progressFill');
-    if (progressTextFinal) progressTextFinal.textContent = 'Download complete!';
-    if (progressFill) progressFill.style.width = '100%';
+    updateProgress(100, 1, 1, fileName, blob.size, blob.size, true);
 }
 
 async function streamZipDownload(selectedFiles, zipFileName) {
@@ -1209,7 +1202,16 @@ async function streamZipWithStreamSaver(selectedFiles, zipFileName) {
                 if (final) {
                     await writer.close();
                     console.info(`✓ ZIP creation completed! Total size: ${formatFileSize(totalSize)}`);
-                    updateProgress(100, `ZIP file created successfully! (${formatFileSize(totalSize)})`);
+                    
+                    // Show completion message
+                    const overallProgressText = document.getElementById('overallProgressText');
+                    const currentFileProgressText = document.getElementById('currentFileProgressText');
+                    if (overallProgressText) {
+                        overallProgressText.textContent = `ZIP created successfully! (${formatFileSize(totalSize)})`;
+                    }
+                    if (currentFileProgressText) {
+                        currentFileProgressText.textContent = 'Finalized';
+                    }
                 }
             } catch (writeError) {
                 console.error('Write error:', writeError);
@@ -1233,7 +1235,17 @@ async function streamZipWithStreamSaver(selectedFiles, zipFileName) {
             }
 
             console.info('Finalizing ZIP archive...');
-            updateProgress(95, 'Finalizing ZIP archive...');
+            
+            // Update progress to show finalizing
+            const overallProgressText = document.getElementById('overallProgressText');
+            const currentFileProgressText = document.getElementById('currentFileProgressText');
+            if (overallProgressText) {
+                overallProgressText.textContent = 'Finalizing ZIP archive...';
+            }
+            if (currentFileProgressText) {
+                currentFileProgressText.textContent = 'All files processed';
+            }
+            
             zipWriter.end();
         } catch (error) {
             console.error('Error during file processing:', error);
@@ -1286,7 +1298,16 @@ async function streamZipWithFileSystemAPI(selectedFiles, zipFileName) {
             
             if (final) {
                 await writable.close();
-                updateProgress(100, `ZIP file created successfully! (${formatFileSize(totalSize)})`);
+                
+                // Show completion message
+                const overallProgressText = document.getElementById('overallProgressText');
+                const currentFileProgressText = document.getElementById('currentFileProgressText');
+                if (overallProgressText) {
+                    overallProgressText.textContent = `ZIP created successfully! (${formatFileSize(totalSize)})`;
+                }
+                if (currentFileProgressText) {
+                    currentFileProgressText.textContent = 'Finalized';
+                }
             }
         };
 
@@ -1302,12 +1323,24 @@ async function streamZipWithFileSystemAPI(selectedFiles, zipFileName) {
             }
         }
 
-        updateProgress(95, 'Finalizing ZIP archive...');
+        // Update progress to show finalizing
+        const overallProgressText = document.getElementById('overallProgressText');
+        const currentFileProgressText = document.getElementById('currentFileProgressText');
+        if (overallProgressText) {
+            overallProgressText.textContent = 'Finalizing ZIP archive...';
+        }
+        if (currentFileProgressText) {
+            currentFileProgressText.textContent = 'All files processed';
+        }
+        
         zipWriter.end();
         
     } catch (error) {
         if (error.name === 'AbortError') {
-            updateProgress(0, 'Download cancelled');
+            const overallProgressText = document.getElementById('overallProgressText');
+            if (overallProgressText) {
+                overallProgressText.textContent = 'Download cancelled';
+            }
         } else {
             throw error;
         }
@@ -1358,7 +1391,16 @@ async function streamZipFallback(selectedFiles, zipFileName) {
             document.body.removeChild(a);
             
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            updateProgress(100, `ZIP file created successfully! (${formatFileSize(totalSize)})`);
+            
+            // Show completion message
+            const overallProgressText = document.getElementById('overallProgressText');
+            const currentFileProgressText = document.getElementById('currentFileProgressText');
+            if (overallProgressText) {
+                overallProgressText.textContent = `ZIP created successfully! (${formatFileSize(totalSize)})`;
+            }
+            if (currentFileProgressText) {
+                currentFileProgressText.textContent = 'Finalized';
+            }
         }
     };
 
@@ -1373,7 +1415,16 @@ async function streamZipFallback(selectedFiles, zipFileName) {
         }
     }
 
-    updateProgress(95, 'Finalizing ZIP archive...');
+    // Update progress to show finalizing
+    const overallProgressText = document.getElementById('overallProgressText');
+    const currentFileProgressText = document.getElementById('currentFileProgressText');
+    if (overallProgressText) {
+        overallProgressText.textContent = 'Finalizing ZIP archive...';
+    }
+    if (currentFileProgressText) {
+        currentFileProgressText.textContent = 'All files processed';
+    }
+    
     zipWriter.end();
 }
 
@@ -1397,7 +1448,7 @@ async function streamFileToZip(zipWriter, fileName, fileIndex, totalFiles) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    // Dateigröße aus Header auslesen
+    // Get file size from header (only when actually downloading)
     const contentLength = response.headers.get('content-length');
     const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
     let loadedBytes = 0;
@@ -1431,6 +1482,9 @@ async function streamFileToZip(zipWriter, fileName, fileIndex, totalFiles) {
                 // File completely read, finalize file writer
                 fileWriter.push(new Uint8Array(0), true); // Final empty chunk
                 console.info(`  [${fileIndex + 1}/${totalFiles}] Completed: ${fileName} (${chunkCount} chunks)`);
+                
+                // Update progress to show file complete
+                updateProgress(100, fileIndex + 1, totalFiles, fileName, totalBytes, totalBytes, true);
                 break;
             }
             
@@ -1452,11 +1506,11 @@ async function streamFileToZip(zipWriter, fileName, fileIndex, totalFiles) {
             loadedBytes += value.length;
             if (totalBytes > 0) {
                 const fileProgress = (loadedBytes / totalBytes) * 100;
-                const overallProgress = ((fileIndex + fileProgress / 100) / totalFiles) * 90;
-                updateProgress(
-                    overallProgress.toFixed(1), 
-                    `File ${fileIndex + 1}/${totalFiles}: ${fileName} (${formatFileSize(loadedBytes)}/${formatFileSize(totalBytes)} - ${fileProgress.toFixed(0)}%)`
-                );
+                updateProgress(fileProgress, fileIndex + 1, totalFiles, fileName, loadedBytes, totalBytes);
+            } else {
+                // Unknown file size
+                const estimatedProgress = Math.min(95, Math.max(10, Math.round((loadedBytes / (1024 * 1024)) * 10)));
+                updateProgress(estimatedProgress, fileIndex + 1, totalFiles, fileName, loadedBytes, 0);
             }
             
             // Small pause for Firefox to prevent blocking the event loop
@@ -1490,15 +1544,50 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function updateProgress(percent, text) {
-    const progressFill = document.getElementById('progressFill');
-    const progressText = document.getElementById('progressText');
+function updateProgress(filePercent, currentFileNum, totalFiles, fileName, loadedBytes, totalBytes, isComplete = false) {
+    const currentFileProgressFill = document.getElementById('currentFileProgressFill');
+    const currentFileProgressText = document.getElementById('currentFileProgressText');
+    const overallProgressFill = document.getElementById('overallProgressFill');
+    const overallProgressText = document.getElementById('overallProgressText');
     
-    if (progressFill) {
-        progressFill.style.width = percent + '%';
+    // Update current file progress
+    if (currentFileProgressFill) {
+        currentFileProgressFill.style.width = filePercent + '%';
+        if (filePercent > 5) {
+            currentFileProgressFill.textContent = Math.round(filePercent) + '%';
+        } else {
+            currentFileProgressFill.textContent = '';
+        }
     }
-    if (progressText) {
-        progressText.textContent = text;
+    
+    if (currentFileProgressText) {
+        if (isComplete) {
+            currentFileProgressText.textContent = `${fileName} - Complete! (${formatFileSize(totalBytes)})`;
+        } else if (totalBytes > 0) {
+            currentFileProgressText.textContent = `${fileName} - ${formatFileSize(loadedBytes)} / ${formatFileSize(totalBytes)}`;
+        } else {
+            currentFileProgressText.textContent = `${fileName} - ${formatFileSize(loadedBytes)}`;
+        }
+    }
+    
+    // Calculate overall progress
+    const overallPercent = ((currentFileNum - 1) / totalFiles * 100) + (filePercent / totalFiles);
+    
+    if (overallProgressFill) {
+        overallProgressFill.style.width = overallPercent + '%';
+        if (overallPercent > 5) {
+            overallProgressFill.textContent = Math.round(overallPercent) + '%';
+        } else {
+            overallProgressFill.textContent = '';
+        }
+    }
+    
+    if (overallProgressText) {
+        if (isComplete && currentFileNum === totalFiles) {
+            overallProgressText.textContent = `All ${totalFiles} file(s) complete!`;
+        } else {
+            overallProgressText.textContent = `File ${currentFileNum} of ${totalFiles}`;
+        }
     }
 }
 

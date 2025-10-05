@@ -35,7 +35,7 @@
                 <li><strong>Page Protection:</strong> Prevents accidental closure during active downloads</li>
             </ul>
             <div class="not-implemented" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin-top: 15px;">
-                <strong>💡 Fallback Strategy Discussion:</strong> The current blob fallback method (used when streaming fails) has high memory usage and may fail with large files. An alternative approach could be to skip ZIP creation entirely in fallback scenarios and instead download each file individually with sequential naming (e.g., <code>batchload_001_filename.ext</code>, <code>batchload_002_filename.ext</code>, etc.). This would eliminate memory constraints and improve reliability for large batch downloads, though users would receive multiple files instead of a single ZIP archive. Further evaluation needed to determine the optimal fallback strategy based on file sizes and browser capabilities.
+                <strong>💡 Fallback Strategy Discussion:</strong> The current blob fallback method (used when streaming fails) has high memory usage and may fail with large files. An alternative approach is to skip ZIP creation entirely in fallback scenarios and instead download each file individually with direct browser downloads. This would eliminate memory constraints and improve reliability for large batch downloads, though users would receive multiple separate files instead of a single ZIP archive. <strong>Important CORS limitation:</strong> Due to browser security policies, cross-origin downloads cannot be renamed via the <code>download</code> attribute—files will retain their original names instead of receiving sequential prefixes like <code>batchload_001_filename.ext</code>. To enable file renaming, files would need to be loaded into memory (blob), which defeats the purpose of this low-memory fallback strategy. The current implementation prioritizes reliability over naming consistency for cross-origin batch downloads.
             </div>
             <div class="not-implemented">
                 <strong>⚠️ Not Yet Implemented:</strong> Page-independent service worker for background downloads (would allow page navigation during download)
@@ -113,10 +113,20 @@
             </div>
         </div>
         <div id="progress" class="progress">
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
+            <div class="progress-container">
+                <div class="progress-label">Current File:</div>
+                <div class="progress-bar">
+                    <div id="currentFileProgressFill" class="progress-fill current-file"></div>
+                </div>
+                <div id="currentFileProgressText" class="progress-text">-</div>
             </div>
-            <div id="progressText" class="progress-text">Preparing download...</div>
+            <div class="progress-container">
+                <div class="progress-label">Overall Progress:</div>
+                <div class="progress-bar">
+                    <div id="overallProgressFill" class="progress-fill overall"></div>
+                </div>
+                <div id="overallProgressText" class="progress-text">Preparing download...</div>
+            </div>
             <div id="blobWarning" class="blob-warning" style="display: none;">
                 ⚠️ WARNING: Using Blob method - High memory usage! Large files may cause browser to freeze or crash.
             </div>
