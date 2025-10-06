@@ -1,6 +1,6 @@
 body {
     font-family: Arial, sans-serif;
-    max-width: 800px;
+    max-width: 1040px;
     margin: 0 auto;
     padding: 20px;
     background-color: #f5f5f5;
@@ -170,6 +170,35 @@ h1 {
     margin-top: 0;
     color: #007bff;
     font-size: 20px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.info-box h2:hover {
+    opacity: 0.8;
+}
+
+.info-box h2::after {
+    content: '▼';
+    font-size: 14px;
+    transition: transform 0.3s ease;
+}
+
+.info-box h2.collapsed::after {
+    transform: rotate(-90deg);
+}
+
+.info-box-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.info-box-content.collapsed {
+    max-height: 0;
 }
 
 .info-box ul {
@@ -178,8 +207,10 @@ h1 {
 }
 
 .info-box li {
-    margin: 5px 0;
+    margin: 3px 0;
     color: #333;
+    font-size: 14px;
+    line-height: 1.4;
 }
 
 .not-implemented {
@@ -192,24 +223,65 @@ h1 {
     color: #856404;
 }
 
-.debug-console {
+.debug-console-wrapper {
     margin-top: 30px;
-    padding: 15px;
-    background-color: #1e1e1e;
-    border-radius: 5px;
-    max-height: 300px;
-    overflow-y: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
 }
 
-.debug-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
+.debug-console-header {
+    background-color: #2d2d2d;
     color: #61dafb;
     font-weight: bold;
+    padding: 12px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+.debug-console-header:hover {
+    background-color: #3d3d3d;
+}
+
+.debug-console-header::after {
+    content: '▼';
+    font-size: 12px;
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+.debug-console-header.collapsed::after {
+    transform: rotate(-90deg);
+}
+
+.debug-console {
+    background-color: #1e1e1e;
+    border-radius: 0 0 5px 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    max-height: 300px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    padding: 15px;
+}
+
+.debug-console.collapsed {
+    max-height: 0;
+    padding: 0 15px;
+}
+
+.debug-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+.debug-content {
+    overflow-y: auto;
+    max-height: 270px;
 }
 
 .debug-log {
@@ -260,6 +332,35 @@ h1 {
     margin-bottom: 10px;
     color: #495057;
     font-size: 16px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.download-options h3:hover {
+    opacity: 0.8;
+}
+
+.download-options h3::after {
+    content: '▼';
+    font-size: 14px;
+    transition: transform 0.3s ease;
+}
+
+.download-options h3.collapsed::after {
+    transform: rotate(-90deg);
+}
+
+.download-options-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.download-options-content.collapsed {
+    max-height: 0;
 }
 
 .option-label {

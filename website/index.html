@@ -22,23 +22,25 @@
         </div>
         
         <div class="info-box">
-            <h2>🔬 Technology Demonstration</h2>
-            <p>This project demonstrates advanced client-side browser capabilities:</p>
-            <ul>
-                <li><strong>Stream Processing:</strong> Memory-efficient handling of large files using ReadableStream API</li>
-                <li><strong>On-the-fly ZIP Compression:</strong> Real-time file packing with fflate library</li>
-                <li><strong>File Renaming:</strong> Automatic "singlefile_" prefix for single files, "batchload_" prefix for multiple files in ZIP</li>
-                <li><strong>Download Streaming:</strong> Direct-to-disk writing via StreamSaver.js or File System Access API</li>
-                <li><strong>Single File Optimization:</strong> Bypasses ZIP creation for single file downloads (direct streaming)</li>
-                <li><strong>Intelligent Fallback:</strong> Automatic method selection: File System API → StreamSaver → Blob</li>
-                <li><strong>User Control:</strong> Manual download method selection and force fallback option</li>
-                <li><strong>Page Protection:</strong> Prevents accidental closure during active downloads</li>
-            </ul>
-            <div class="not-implemented" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin-top: 15px;">
-                <strong>💡 Fallback Strategy Discussion:</strong> The current blob fallback method (used when streaming fails) has high memory usage and may fail with large files. An alternative approach is to skip ZIP creation entirely in fallback scenarios and instead download each file individually with direct browser downloads. This would eliminate memory constraints and improve reliability for large batch downloads, though users would receive multiple separate files instead of a single ZIP archive. <strong>Important CORS limitation:</strong> Due to browser security policies, cross-origin downloads cannot be renamed via the <code>download</code> attribute—files will retain their original names instead of receiving sequential prefixes like <code>batchload_001_filename.ext</code>. To enable file renaming, files would need to be loaded into memory (blob), which defeats the purpose of this low-memory fallback strategy. The current implementation prioritizes reliability over naming consistency for cross-origin batch downloads.
-            </div>
-            <div class="not-implemented">
-                <strong>⚠️ Not Yet Implemented:</strong> Page-independent service worker for background downloads (would allow page navigation during download)
+            <h2 onclick="toggleInfoBox(this)">🔬 Technology Demonstration</h2>
+            <div class="info-box-content">
+                <p style="margin: 5px 0; font-size: 14px;">This project demonstrates advanced client-side browser capabilities:</p>
+                <ul>
+                    <li><strong>Stream Processing:</strong> Memory-efficient handling of large files using ReadableStream API</li>
+                    <li><strong>On-the-fly ZIP Compression:</strong> Real-time file packing with fflate library</li>
+                    <li><strong>File Renaming:</strong> Automatic "singlefile_" prefix for single files, "batchload_" prefix for multiple files in ZIP</li>
+                    <li><strong>Download Streaming:</strong> Direct-to-disk writing via StreamSaver.js or File System Access API</li>
+                    <li><strong>Single File Optimization:</strong> Bypasses ZIP creation for single file downloads (direct streaming)</li>
+                    <li><strong>Intelligent Fallback:</strong> Automatic method selection: File System API → StreamSaver → Blob</li>
+                    <li><strong>User Control:</strong> Manual download method selection and force fallback option</li>
+                    <li><strong>Page Protection:</strong> Prevents accidental closure during active downloads</li>
+                </ul>
+                <div class="not-implemented" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin-top: 12px; font-size: 13px;">
+                    <strong>💡 Fallback Strategy Discussion:</strong> The current blob fallback method (used when streaming fails) has high memory usage and may fail with large files. An alternative approach is to skip ZIP creation entirely in fallback scenarios and instead download each file individually with direct browser downloads. This would eliminate memory constraints and improve reliability for large batch downloads, though users would receive multiple separate files instead of a single ZIP archive. <strong>Important CORS limitation:</strong> Due to browser security policies, cross-origin downloads cannot be renamed via the <code>download</code> attribute—files will retain their original names instead of receiving sequential prefixes like <code>batchload_001_filename.ext</code>. To enable file renaming, files would need to be loaded into memory (blob), which defeats the purpose of this low-memory fallback strategy. The current implementation prioritizes reliability over naming consistency for cross-origin batch downloads.
+                </div>
+                <div class="not-implemented" style="font-size: 13px;">
+                    <strong>⚠️ Not Yet Implemented:</strong> Page-independent service worker for background downloads (would allow page navigation during download)
+                </div>
             </div>
         </div>
         
@@ -51,7 +53,8 @@
             <div id="fileList" class="file-list"></div>
             
             <div class="download-options">
-                <h3>Download Options</h3>
+                <h3 class="collapsed" onclick="toggleDownloadOptions(this)">⚙️ Download Options</h3>
+                <div class="download-options-content collapsed">
                 <label class="option-label">
                     <input type="checkbox" id="useFileSystemAPI" checked>
                     <span>Use File System Access API (Ask where to save)</span>
@@ -106,6 +109,7 @@
                 </div>
                 
                 <div id="downloadMethodInfo" class="method-info"></div>
+                </div>
             </div>
             
             <div class="controls">
@@ -133,12 +137,16 @@
         </div>
         <div id="error" class="error" style="display: none;"></div>
         
-        <div class="debug-console">
-            <div class="debug-header">
+        <div class="debug-console-wrapper">
+            <div class="debug-console-header collapsed" onclick="toggleDebugConsole(this)">
                 <span>🐛 Debug Console (Mobile-Friendly debugging)</span>
-                <button class="debug-clear" onclick="clearDebugConsole()">Clear</button>
             </div>
-            <div id="debugOutput"></div>
+            <div class="debug-console collapsed">
+                <div class="debug-controls">
+                    <button class="debug-clear" onclick="clearDebugConsole()">Clear</button>
+                </div>
+                <div id="debugOutput" class="debug-content"></div>
+            </div>
         </div>
     </div>
 

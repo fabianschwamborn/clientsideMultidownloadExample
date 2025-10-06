@@ -727,10 +727,20 @@ async function downloadFilesIndividually(selectedFiles) {
     // Result: Files download with ORIGINAL names, NOT "fallback_X_" prefix.
     // Alternative would be to load into blob for renaming, but that may crash browser with large files.
     
-    // Trigger all downloads in parallel - direct browser downloads, no blob, no rename
-    selectedFiles.forEach((fileName, i) => {
+    // Trigger downloads with delay between each (required for Edge and some browsers to prevent blocking)
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const fileName = selectedFiles[i];
         const prefixedName = `fallback_${i + 1}_${fileName}`;
         console.info(`[${i + 1}/${totalFiles}] Direct download: ${fileName} (prefix ignored by browser due to CORS)`);
+        
+        // Update progress
+        if (currentFileProgressText) {
+            currentFileProgressText.textContent = `Triggering download ${i + 1}/${totalFiles}: ${fileName}`;
+        }
+        if (overallProgressFill) {
+            const progress = ((i + 1) / totalFiles) * 100;
+            overallProgressFill.style.width = `${progress}%`;
+        }
         
         const a = document.createElement('a');
         a.href = API_BASE_URL + fileName;
@@ -740,7 +750,13 @@ async function downloadFilesIndividually(selectedFiles) {
         a.click();
         
         setTimeout(() => document.body.removeChild(a), 100);
-    });
+        
+        // Add delay between downloads to prevent browser blocking (especially for Edge)
+        // Only delay if not the last file
+        if (i < selectedFiles.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
     
     console.info('✓ All direct downloads triggered (files will use original names due to CORS)');
     if (overallProgressText) overallProgressText.textContent = `All ${totalFiles} files downloading with original names!`;
@@ -1607,3 +1623,23 @@ function hideError() {
         errorDiv.style.display = 'none';
     }
 }
+
+// Toggle functions for collapsible sections
+function toggleInfoBox(header) {
+    const content = header.nextElementSibling;
+    header.classList.toggle('collapsed');
+    content.classList.toggle('collapsed');
+}
+
+function toggleDownloadOptions(header) {
+    const content = header.nextElementSibling;
+    header.classList.toggle('collapsed');
+    content.classList.toggle('collapsed');
+}
+
+function toggleDebugConsole(header) {
+    const consoleElement = header.nextElementSibling;
+    header.classList.toggle('collapsed');
+    consoleElement.classList.toggle('collapsed');
+}
+
